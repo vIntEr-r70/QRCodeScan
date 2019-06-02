@@ -149,9 +149,7 @@ public final class BarcodeCaptureActivity extends AppCompatActivity implements B
     @Override
     public boolean onTouchEvent(MotionEvent e) {
         boolean b = scaleGestureDetector.onTouchEvent(e);
-
         boolean c = gestureDetector.onTouchEvent(e);
-
         return b || c || super.onTouchEvent(e);
     }
 

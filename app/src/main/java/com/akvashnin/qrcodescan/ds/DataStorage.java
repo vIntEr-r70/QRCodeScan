@@ -4,6 +4,7 @@ import android.content.ContentProvider;
 import android.content.ContentUris;
 import android.content.ContentValues;
 import android.content.Context;
+import android.content.Entity;
 import android.content.UriMatcher;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
@@ -11,14 +12,20 @@ import android.database.sqlite.SQLiteOpenHelper;
 import android.net.Uri;
 import android.text.TextUtils;
 
+import androidx.core.util.Pair;
+
+import java.util.Map;
+
 public class DataStorage extends ContentProvider {
 
     // Defines the database name and version
     private static final String DB_NAME = "com.akvashnin.qrcodescan";
-    private static final int DB_VERSION = 2;
+    private static final int DB_VERSION = 3;
 
     // Table with barcodes name
     private static final String BARCODES_TABLE_NAME = "barcodes";
+    private static final String PHOTOS_TABLE_NAME = "photos";
+
 
     // Barcodes table fields name
     public class Barcode {
@@ -26,25 +33,42 @@ public class DataStorage extends ContentProvider {
         public static final String VALUE = "VALUE";
     }
 
+    // Barcodes table fields name
+    public class Photos {
+        public static final String ID           = "_id";
+        public static final String FILE_NAME    = "FILE_NAME";
+    }
+
     public static final Uri BARCODE_CONTENT_URI =
             Uri.parse("content://" + DB_NAME + "/" + BARCODES_TABLE_NAME);
+
+    public static final Uri PHOTOS_CONTENT_URI =
+            Uri.parse("content://" + DB_NAME + "/" + PHOTOS_TABLE_NAME);
 
     static final String BARCODE_CONTENT_TYPE = "vnd.android.cursor.dir/vnd."
             + DB_NAME + "." + BARCODES_TABLE_NAME;
 
-    // одна строка
+    static final String PHOTOS_CONTENT_TYPE = "vnd.android.cursor.dir/vnd."
+            + DB_NAME + "." + PHOTOS_TABLE_NAME;
+
     static final String BARCODE_CONTENT_ITEM_TYPE = "vnd.android.cursor.item/vnd."
             + DB_NAME + "." + BARCODES_TABLE_NAME;
 
+    static final String PHOTOS_CONTENT_ITEM_TYPE = "vnd.android.cursor.item/vnd."
+            + DB_NAME + "." + PHOTOS_TABLE_NAME;
+
     static final int URI_BARCODES = 1;
     static final int URI_BARCODES_ID = 2;
+    static final int URI_PHOTOS = 3;
+    static final int URI_PHOTOS_ID = 4;
 
-    // описание и создание UriMatcher
     private static final UriMatcher uriMatcher;
     static {
         uriMatcher = new UriMatcher(UriMatcher.NO_MATCH);
         uriMatcher.addURI(DB_NAME, BARCODES_TABLE_NAME, URI_BARCODES);
         uriMatcher.addURI(DB_NAME, BARCODES_TABLE_NAME + "/#", URI_BARCODES_ID);
+        uriMatcher.addURI(DB_NAME, PHOTOS_TABLE_NAME, URI_PHOTOS);
+        uriMatcher.addURI(DB_NAME, PHOTOS_TABLE_NAME + "/#", URI_PHOTOS_ID);
     }
 
     DatabaseHelper dbHelper;
@@ -59,40 +83,63 @@ public class DataStorage extends ContentProvider {
     @Override
     public Cursor query(Uri uri, String[] projection, String selection, String[] selectionArgs, String sortOrder) {
 
-        switch (uriMatcher.match(uri)) {
+        int uriId = uriMatcher.match(uri);
+        String id;
+
+        switch (uriId) {
             case URI_BARCODES:
                 if (TextUtils.isEmpty(sortOrder)) {
                     sortOrder = Barcode.ID + " ASC";
                 }
                 break;
             case URI_BARCODES_ID:
-                String id = uri.getLastPathSegment();
+                id = uri.getLastPathSegment();
                 if (TextUtils.isEmpty(selection)) {
                     selection = Barcode.ID + " = " + id;
                 } else {
                     selection = selection + " AND " + Barcode.ID + " = " + id;
                 }
                 break;
+            case URI_PHOTOS:
+                if (TextUtils.isEmpty(sortOrder)) {
+                    sortOrder = Photos.ID + " ASC";
+                }
+                break;
+            case URI_PHOTOS_ID:
+                id = uri.getLastPathSegment();
+                if (TextUtils.isEmpty(selection)) {
+                    selection = Photos.ID + " = " + id;
+                } else {
+                    selection = selection + " AND " + Photos.ID + " = " + id;
+                }
+                break;
+
             default:
                 throw new IllegalArgumentException("Wrong URI: " + uri);
         }
 
+        Pair<String, Uri> table = resolveTables(uriId);
+
         db = dbHelper.getWritableDatabase();
-        Cursor cursor = db.query(BARCODES_TABLE_NAME, projection, selection,
+        Cursor cursor = db.query(table.first, projection, selection,
                 selectionArgs, null, null, sortOrder);
 
-        cursor.setNotificationUri(getContext().getContentResolver(), BARCODE_CONTENT_URI);
+        cursor.setNotificationUri(getContext().getContentResolver(), table.second);
         return cursor;
     }
 
     @Override
     public Uri insert(Uri uri, ContentValues values) {
-        if (uriMatcher.match(uri) != URI_BARCODES)
+
+        int uriId = uriMatcher.match(uri);
+        if (uriId != URI_BARCODES && uriId != URI_PHOTOS)
             throw new IllegalArgumentException("Wrong URI: " + uri);
 
+        Pair<String, Uri> table = resolveTables(uriId);
+
         db = dbHelper.getWritableDatabase();
-        long rowID = db.insert(BARCODES_TABLE_NAME, null, values);
-        Uri resultUri = ContentUris.withAppendedId(BARCODE_CONTENT_URI, rowID);
+        long rowID = db.insert(table.first, null, values);
+        Uri resultUri = ContentUris.withAppendedId(table.second, rowID);
 
         getContext().getContentResolver().notifyChange(resultUri, null);
         return resultUri;
@@ -100,37 +147,64 @@ public class DataStorage extends ContentProvider {
 
     @Override
     public int update(Uri uri, ContentValues values, String selection, String[] selectionArgs) {
-        switch (uriMatcher.match(uri)) {
+
+        int uriId = uriMatcher.match(uri);
+        String id;
+
+        switch (uriId) {
             case URI_BARCODES:
+            case URI_PHOTOS:
                 break;
             case URI_BARCODES_ID:
-                String id = uri.getLastPathSegment();
+                id = uri.getLastPathSegment();
                 if (TextUtils.isEmpty(selection)) {
                     selection = Barcode.ID + " = " + id;
                 } else {
                     selection = selection + " AND " + Barcode.ID + " = " + id;
                 }
                 break;
+            case URI_PHOTOS_ID:
+                id = uri.getLastPathSegment();
+                if (TextUtils.isEmpty(selection)) {
+                    selection = Photos.ID + " = " + id;
+                } else {
+                    selection = selection + " AND " + Photos.ID + " = " + id;
+                }
+                break;
             default:
                 throw new IllegalArgumentException("Wrong URI: " + uri);
         }
+
+        Pair<String, Uri> table = resolveTables(uriId);
+
         db = dbHelper.getWritableDatabase();
-        int cnt = db.update(BARCODES_TABLE_NAME, values, selection, selectionArgs);
+        int cnt = db.update(table.first, values, selection, selectionArgs);
         getContext().getContentResolver().notifyChange(uri, null);
         return cnt;
     }
 
     @Override
     public int delete(Uri uri, String selection, String[] selectionArgs) {
-        switch (uriMatcher.match(uri)) {
+        int uriId = uriMatcher.match(uri);
+        String id;
+        switch (uriId) {
             case URI_BARCODES:
+            case URI_PHOTOS:
                 break;
             case URI_BARCODES_ID:
-                String id = uri.getLastPathSegment();
+                id = uri.getLastPathSegment();
                 if (TextUtils.isEmpty(selection)) {
                     selection = Barcode.ID + " = " + id;
                 } else {
                     selection = selection + " AND " + Barcode.ID + " = " + id;
+                }
+                break;
+            case URI_PHOTOS_ID:
+                id = uri.getLastPathSegment();
+                if (TextUtils.isEmpty(selection)) {
+                    selection = Photos.ID + " = " + id;
+                } else {
+                    selection = selection + " AND " + Photos.ID + " = " + id;
                 }
                 break;
             default:
@@ -139,7 +213,9 @@ public class DataStorage extends ContentProvider {
 
         db = dbHelper.getWritableDatabase();
 
-        int cnt = db.delete(BARCODES_TABLE_NAME, selection, selectionArgs);
+        Pair<String, Uri> table = resolveTables(uriId);
+
+        int cnt = db.delete(table.first, selection, selectionArgs);
         getContext().getContentResolver().notifyChange(uri, null);
         return cnt;
     }
@@ -151,8 +227,25 @@ public class DataStorage extends ContentProvider {
                 return BARCODE_CONTENT_TYPE;
             case URI_BARCODES_ID:
                 return BARCODE_CONTENT_ITEM_TYPE;
+            case URI_PHOTOS:
+                return PHOTOS_CONTENT_TYPE;
+            case URI_PHOTOS_ID:
+                return PHOTOS_CONTENT_ITEM_TYPE;
         }
         return null;
+    }
+
+    private Pair<String,Uri> resolveTables(int uriId) {
+        switch (uriId) {
+            case URI_BARCODES:
+            case URI_BARCODES_ID:
+                return new Pair<>(BARCODES_TABLE_NAME, BARCODE_CONTENT_URI);
+
+            case URI_PHOTOS:
+            case URI_PHOTOS_ID:
+                return new Pair<>(PHOTOS_TABLE_NAME, PHOTOS_CONTENT_URI);
+        }
+        throw new IllegalArgumentException("Wrong URI");
     }
 
 
@@ -165,7 +258,13 @@ public class DataStorage extends ContentProvider {
                 Barcode.ID + " INTEGER PRIMARY KEY, " +
                 Barcode.VALUE + " TEXT)";
 
+        private static final String SQL_CREATE_PHOTOS_TABLE = "CREATE TABLE " +
+                PHOTOS_TABLE_NAME + "(" +                               // The columns in the table
+                Photos.ID + " INTEGER PRIMARY KEY, " +
+                Photos.FILE_NAME + " TEXT)";
+
         private static final String SQL_DROP_BARCODES_TABLE = "DROP TABLE IF EXISTS " + BARCODES_TABLE_NAME;
+        private static final String SQL_DROP_PHOTOS_TABLE = "DROP TABLE IF EXISTS " + PHOTOS_TABLE_NAME;
 
         // Instantiates an open helper for the provider's SQLite data repository
         DatabaseHelper(Context context) {
@@ -177,11 +276,13 @@ public class DataStorage extends ContentProvider {
         public void onCreate(SQLiteDatabase db) {
             // Creates tables
             db.execSQL(SQL_CREATE_BARCODES_TABLE);
+            db.execSQL(SQL_CREATE_PHOTOS_TABLE);
         }
 
         @Override
         public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
             db.execSQL(SQL_DROP_BARCODES_TABLE);
+            db.execSQL(SQL_DROP_PHOTOS_TABLE);
             onCreate(db);
         }
     }
