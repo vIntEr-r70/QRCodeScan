@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/topLayout"
+    android:orientation="vertical"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:keepScreenOn="true">
+
+  <com.akvashnin.qrcodescan.ui.camera.CameraSourcePreview
+      android:id="@+id/preview"
+      android:layout_width="wrap_content"
+      android:layout_height="wrap_content"
+      tools:layout_conversion_absoluteHeight="731dp"
+      tools:layout_editor_absoluteY="0dp"
+      tools:layout_editor_absoluteX="0dp"
+      tools:layout_conversion_absoluteWidth="411dp">
+
+    <com.akvashnin.qrcodescan.ui.camera.GraphicOverlay
+        android:id="@+id/graphicOverlay"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        tools:layout_conversion_absoluteHeight="549dp"
+        tools:layout_editor_absoluteY="0dp"
+        tools:layout_editor_absoluteX="0dp"
+        tools:layout_conversion_absoluteWidth="411dp" />
+
+  </com.akvashnin.qrcodescan.ui.camera.CameraSourcePreview>
+
+</LinearLayout>
